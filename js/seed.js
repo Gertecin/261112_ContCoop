@@ -82,9 +82,9 @@
       ['Capital social', 'patrimonio'],
       ['Reserva legal', 'patrimonio'],
       ['Fondo de educación cooperativa', 'patrimonio'],
-      ['Resultados acumulados', 'patrimonio'],
+      ['Costo de venta de otros productos', 'gasto'],
       ['Resultado del ejercicio', 'patrimonio'],
-      ['Ajustes de capital', 'patrimonio'],
+      ['Retorno a socios por pagar', 'pasivo'],
       ['Ventas de harinas', 'ingreso'],
       ['Ventas de raciones', 'ingreso'],
       ['Ventas de subproductos', 'ingreso'],
@@ -147,10 +147,28 @@
     ];
 
     const otherProducts = [
-      'Harina de maíz', 'Polenta', 'Gofio', 'Avena', 'Maíz',
-      'Ración para vacas lecheras', 'Ración para equinos', 'Ración para ovinos',
-      'Chicharrón', 'Grasa', 'Margarina', 'Bolsas de 1 kg', 'Bolsas de 25 kg', 'Bolsas de 50 kg'
+      { name: 'Harina de maíz', costCents: 1800, priceCents: 2400, account: 'Stock de harina de maíz', bags: [1, 25, 50] },
+      { name: 'Polenta', costCents: 2000, priceCents: 2700, account: 'Stock de polenta', bags: [1, 25] },
+      { name: 'Gofio', costCents: 2500, priceCents: 3300, account: 'Stock de gofio', bags: [1] },
+      { name: 'Avena', costCents: 2200, priceCents: 2900, account: 'Stock de avena', bags: [1, 25] },
+      { name: 'Maíz', costCents: 1200, priceCents: 1600, account: 'Stock de maíz', bags: [25, 50] },
+      { name: 'Ración para vacas lecheras', costCents: 1400, priceCents: 1900, account: 'Stock de raciones', bags: [25, 50] },
+      { name: 'Ración para equinos', costCents: 1500, priceCents: 2000, account: 'Stock de raciones', bags: [25, 50] },
+      { name: 'Ración para ovinos', costCents: 1400, priceCents: 1800, account: 'Stock de raciones', bags: [25] },
+      { name: 'Chicharrón', costCents: 3000, priceCents: 3800, account: 'Stock de chicharrón', bags: [1, 25] },
+      { name: 'Grasa', costCents: 2600, priceCents: 3400, account: 'Stock de grasa', bags: [1, 25] },
+      { name: 'Margarina', costCents: 4000, priceCents: 5200, account: 'Stock de margarina', bags: [1] },
+      { name: 'Bolsas de 1 kg', costCents: 200, priceCents: 300, account: 'Stock de envases', bags: [] },
+      { name: 'Bolsas de 25 kg', costCents: 500, priceCents: 700, account: 'Stock de envases', bags: [] },
+      { name: 'Bolsas de 50 kg', costCents: 900, priceCents: 1200, account: 'Stock de envases', bags: [] }
     ];
+
+    const serviceProvider = {
+      name: 'Cooperativa de Carga y Descarga Florida',
+      type: 'Proveedor de servicio',
+      exclusive: true,
+      note: 'Trabaja solo para el molino; sus servicios se registran en «Servicio de carga y descarga».'
+    };
 
     const firstNames = [
       'María', 'Juan', 'Ana', 'Carlos', 'Lucía', 'José', 'Fernanda', 'Antonio', 'Valeria', 'Pedro',
@@ -218,17 +236,7 @@
       }
       entrySeq += 1;
       const id = `E${String(entrySeq).padStart(4, '0')}`;
-      entries.push({
-        id,
-        number: status === 'confirmed' ? entrySeq : null,
-        date,
-        concept,
-        lines,
-        status,
-        source: source || 'seed',
-        reversalOf,
-        reversedBy
-      });
+      entries.push({ id, number: status === 'confirmed' ? entrySeq : null, date, concept, lines, status, source: source || 'seed', reversalOf, reversedBy });
       return id;
     }
 
@@ -276,14 +284,7 @@
           }
         }
 
-        hours.push({
-          partnerId: partners[p].id,
-          month: monthKey(m),
-          day,
-          night,
-          extra,
-          status
-        });
+        hours.push({ partnerId: partners[p].id, month: monthKey(m), day, night, extra, status });
 
         if (m < 7) {
           const amount = status === 'blocked'
@@ -304,10 +305,7 @@
     function allocateSeed(totalCostCents, items) {
       const vals = items.map((item) => {
         const prod = products.find((p) => p.key === item.product);
-        return {
-          ...item,
-          valueCents: item.kilos * (prod ? prod.priceCents : 0)
-        };
+        return { ...item, valueCents: item.kilos * (prod ? prod.priceCents : 0) };
       });
 
       const totalValue = vals.reduce((s, v) => s + v.valueCents, 0);
@@ -387,12 +385,7 @@
           wheatCostCents,
           energyCostCents,
           totalCostCents,
-          outputs: costLines.map((cl) => ({
-            product: cl.product,
-            kilos: cl.kilos,
-            valueCents: cl.valueCents,
-            costCents: cl.costCents
-          })),
+          outputs: costLines.map((cl) => ({ product: cl.product, kilos: cl.kilos, valueCents: cl.valueCents, costCents: cl.costCents })),
           mermaKilos,
           entryId
         });
@@ -500,6 +493,49 @@
       }
     }
 
+    addEntry({
+      date: isoDate(1, lastBusinessDay(1)),
+      concept: `Compra harina de maíz — ${serviceProvider.name} no interviene; compra directa`,
+      lines: [
+        { account: 'Stock de harina de maíz', debit: 3600000, credit: 0 },
+        { account: 'Proveedores de otros productos', debit: 0, credit: 3600000 }
+      ],
+      source: 'compra-otros'
+    });
+
+    addEntry({
+      date: isoDate(4, lastBusinessDay(4)),
+      concept: 'Compra polenta con costo directo',
+      lines: [
+        { account: 'Stock de polenta', debit: 3000000, credit: 0 },
+        { account: 'Proveedores de otros productos', debit: 0, credit: 3000000 }
+      ],
+      source: 'compra-otros'
+    });
+
+    for (let i = 0; i < 4; i++) {
+      const m = 2 + i;
+      const days = businessDays(m);
+      const day = days[(i * 6) % days.length];
+      const client = clients[1 + i * 4];
+      const prod = otherProducts[i % 2];
+      const kilos = 300;
+      const revenue = kilos * prod.priceCents;
+      const cost = kilos * prod.costCents;
+
+      addEntry({
+        date: isoDate(m, day),
+        concept: `Venta ${prod.name} a ${client.name} con costo directo`,
+        lines: [
+          { account: 'Deudores por ventas', debit: revenue, credit: 0 },
+          { account: 'Ventas de otros productos', debit: 0, credit: revenue },
+          { account: 'Costo de venta de otros productos', debit: cost, credit: 0 },
+          { account: prod.account, debit: 0, credit: cost }
+        ],
+        source: 'venta-otros'
+      });
+    }
+
     const expenseAccounts = [
       'Servicio de carga y descarga',
       'Fletes',
@@ -513,17 +549,20 @@
       'Comunicaciones'
     ];
 
-    for (let i = 0; i < 41; i++) {
+    for (let i = 0; i < 35; i++) {
       const m = i % 10;
       const days = businessDays(m);
       const day = days[(i * 7) % days.length];
       const account = expenseAccounts[i % expenseAccounts.length];
       const amountCents = (5000 + int(0, 25000)) * 100;
       const creditAccount = i % 3 === 0 ? 'Caja' : 'Banco';
+      const concept = account === 'Servicio de carga y descarga'
+        ? `Servicio de carga y descarga — ${serviceProvider.name} ${String(i + 1).padStart(2, '0')}`
+        : `Pago ${account.toLowerCase()} ${String(i + 1).padStart(2, '0')}`;
 
       addEntry({
         date: isoDate(m, day),
-        concept: `Pago ${account.toLowerCase()} ${String(i + 1).padStart(2, '0')}`,
+        concept,
         lines: [
           { account, debit: amountCents, credit: 0 },
           { account: creditAccount, debit: 0, credit: amountCents }
@@ -562,7 +601,7 @@
     return {
       meta: {
         business: 'Cooperativa de Trabajo Molino Florida',
-        seedVersion: '261112_v1',
+        seedVersion: '261112_v2',
         seed: SEED,
         updatedAt: Date.now(),
         counts: {
@@ -579,6 +618,7 @@
       accounts,
       products,
       otherProducts,
+      serviceProvider,
       partners,
       employees,
       clients,
