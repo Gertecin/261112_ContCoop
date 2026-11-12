@@ -1,7 +1,7 @@
 const { useState, useEffect } = React;
 
-const STORAGE_KEY = 'contcoop_261112_v1';
-const SEED_VERSION = '261112_v1';
+const STORAGE_KEY = 'contcoop_261112_v2';
+const SEED_VERSION = '261112_v2';
 
 const inputCls = 'w-full border border-crema rounded-xl px-3 py-2 bg-white text-sm';
 const btnBase = 'px-3 py-2 rounded-xl text-sm font-medium disabled:opacity-50';
@@ -28,6 +28,19 @@ const parseCents = (v) => {
 const parseKg = (v) => {
   const n = parseInt(String(v || '').replace(/[^0-9]/g, ''), 10);
   return Number.isFinite(n) ? n : 0;
+};
+
+const lastDayOf = (period) => {
+  const [y, m] = String(period).split('-').map(Number);
+  const d = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+};
+
+const nextPeriodOf = (period) => {
+  const [y, m] = String(period).split('-').map(Number);
+  const nm = m === 12 ? 1 : m + 1;
+  const ny = m === 12 ? y + 1 : y;
+  return `${ny}-${String(nm).padStart(2, '0')}`;
 };
 
 function saveRaw(state) {
@@ -128,6 +141,20 @@ function getBalances(state, period) {
   return res;
 }
 
+function cumulativeBalances(state, period) {
+  const res = {};
+  state.entries.forEach((e) => {
+    if (e.status !== 'confirmed') return;
+    if (period && periodOf(e.date) > period) return;
+    e.lines.forEach((l) => {
+      const b = res[l.account] || (res[l.account] = { debit: 0, credit: 0 });
+      b.debit += l.debit || 0;
+      b.credit += l.credit || 0;
+    });
+  });
+  return res;
+}
+
 function trialBalance(state, period) {
   const balances = getBalances(state, period || null);
   let totalDebit = 0;
@@ -179,7 +206,7 @@ function resultCents(state) {
 function partnerTotals(state) {
   const map = {};
   state.partners.forEach((p) => {
-    map[p.id] = { partner: p, day: 0, night: 0, extra: 0, advances: 0, blocked: false };
+    map[p.id] = { partner: p, day: 0, night: 0, extra: 0, advances: 0, blocked: false, blockedMonth: null };
   });
 
   state.hours.forEach((h) => {
@@ -188,7 +215,10 @@ function partnerTotals(state) {
     t.day += h.day;
     t.night += h.night;
     t.extra += h.extra;
-    if (h.status === 'blocked') t.blocked = true;
+    if (h.status === 'blocked') {
+      t.blocked = true;
+      t.blockedMonth = h.month;
+    }
   });
 
   state.advances
@@ -285,6 +315,8 @@ function Layout({ route, children }) {
     ['/moliendas', 'Moliendas'],
     ['/mayor', 'Mayor'],
     ['/reportes', 'Reportes'],
+    ['/centros', 'Centros'],
+    ['/cierre', 'Cierre'],
     ['/socios', 'Socios'],
     ['/distribucion', 'Distribución'],
     ['/admin', 'Admin']
@@ -339,6 +371,40 @@ function Btn({ children, onClick, variant = 'primary', disabled = false, type = 
   );
 }
 
+function YieldChart({ outputs, products, wheatKilos }) {
+  const items = outputs
+    .map((o) => ({ p: products.find((x) => x.key === o.product), o }))
+    .filter((x) => x.p && x.o.kilos > 0);
+
+  if (!items.length) return null;
+
+  const max = Math.max(...items.map((x) => x.o.kilos), 1);
+  const bw = 34;
+  const gap = 8;
+  const W = items.length * (bw + gap) + 12;
+  const H = 140;
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-lg" role="img" aria-label="Rendimiento de la molienda en kilos por producto">
+      {items.map((x, i) => {
+        const h = Math.max(4, Math.round((x.o.kilos / max) * 88));
+        const px = 8 + i * (bw + gap);
+        const py = 108 - h;
+        const pct = wheatKilos ? Math.round((x.o.kilos / wheatKilos) * 100) : 0;
+        const short = x.p.name.replace('Harina ', 'H. ').replace('Germen de trigo', 'Germen');
+        return (
+          <g key={x.p.key}>
+            <rect x={px} y={py} width={bw} height={h} rx="4" fill={x.p.type === 'harina' ? '#D9A441' : '#5E7D3A'} />
+            <text x={px + bw / 2} y={104} textAnchor="middle" fontSize="9" fill="#3B2F1E">{pct}%</text>
+            <text x={px + bw / 2} y={122} textAnchor="middle" fontSize="8" fill="#3B2F1E">{short}</text>
+          </g>
+        );
+      })}
+      <line x1="0" y1="108" x2={W} y2="108" stroke="#E9DFC8" strokeWidth="2" />
+    </svg>
+  );
+}
+
 function Dashboard({ state }) {
   const confirmed = state.entries.filter((e) => e.status === 'confirmed').length;
   const drafts = state.entries.length - confirmed;
@@ -364,8 +430,8 @@ function Dashboard({ state }) {
       <Card title="Panel cooperativo">
         <p className="text-sm leading-relaxed text-chocolate/80">
           Esta aplicación registra partida doble, moliendas con costo conjunto por valor de venta relativo,
-          anticipos de retorno de socios y reportes por período. Todos los datos son simulados y persisten
-          en el navegador mediante localStorage.
+          anticipos de retorno de socios, cierre del ejercicio y reportes por período. Todos los datos son
+          simulados y persisten en el navegador mediante localStorage.
         </p>
       </Card>
 
@@ -384,6 +450,8 @@ function Dashboard({ state }) {
           <a className="px-3 py-2 rounded-xl bg-dorado text-chocolate text-sm" href="#/asientos">Ver diario</a>
           <a className="px-3 py-2 rounded-xl bg-crema text-chocolate text-sm" href="#/mayor">Libro mayor</a>
           <a className="px-3 py-2 rounded-xl bg-crema text-chocolate text-sm" href="#/reportes">Balance</a>
+          <a className="px-3 py-2 rounded-xl bg-crema text-chocolate text-sm" href="#/centros">Centros de costo</a>
+          <a className="px-3 py-2 rounded-xl bg-crema text-chocolate text-sm" href="#/cierre">Cierre</a>
           <a className="px-3 py-2 rounded-xl bg-crema text-chocolate text-sm" href="#/distribucion">Distribución</a>
         </div>
       </Card>
@@ -756,6 +824,15 @@ function Millings({ state, persist }) {
 
   return (
     <div>
+      <Card title="Calendario y cupos">
+        <p className="text-sm text-chocolate/80 leading-relaxed">
+          Molienda de lunes a viernes en tres turnos (6 a 14, 14 a 22 y 22 a 6). Embolsado de 7 a 15.
+          Reparto martes y jueves. Cada turno tiene un cupo de {fmtKg(state.settings.shiftCapacityKg)} de trigo.
+          Anticipos de socios se pagan el día 8 del mes siguiente. Cada socio tiene 184 horas mensuales
+          más 24 extra que aprueba el consejo.
+        </p>
+      </Card>
+
       <Card title="Registro de moliendas">
         <div className="grid gap-2 md:grid-cols-4 mb-2">
           <input className={inputCls} type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
@@ -794,7 +871,8 @@ function Millings({ state, persist }) {
         {preview && (
           <div className="mt-4 overflow-x-auto">
             <h3 className="font-title mb-2">Cuenta paso a paso</h3>
-            <table className="min-w-full text-sm mb-2">
+            <YieldChart outputs={preview.allocated} products={state.products} wheatKilos={preview.wheat} />
+            <table className="min-w-full text-sm mb-2 mt-2">
               <thead>
                 <tr>
                   <th className={thCls}>Producto</th>
@@ -851,7 +929,8 @@ function Millings({ state, persist }) {
                   </div>
                 </summary>
                 <div className="p-3 pt-0 overflow-x-auto">
-                  <table className="min-w-full text-sm">
+                  <YieldChart outputs={m.outputs} products={state.products} wheatKilos={m.wheatKilos} />
+                  <table className="min-w-full text-sm mt-2">
                     <thead>
                       <tr>
                         <th className={thCls}>Producto</th>
@@ -1013,15 +1092,309 @@ function Reports({ state }) {
   );
 }
 
-function Partners({ state }) {
+function Centros({ state }) {
+  const productRows = state.products
+    .filter((p) => p.type !== 'merma')
+    .map((p) => {
+      let kilos = 0;
+      let cost = 0;
+      let value = 0;
+      state.millings.forEach((m) => {
+        m.outputs.forEach((o) => {
+          if (o.product === p.key) {
+            kilos += o.kilos;
+            cost += o.costCents;
+            value += o.valueCents;
+          }
+        });
+      });
+      return { name: p.name, kilos, cost, value, margin: value - cost };
+    });
+
+  const balances = getBalances(state, null);
+  const othersRev = ((balances['Ventas de otros productos'] || {}).credit || 0) - ((balances['Ventas de otros productos'] || {}).debit || 0);
+  const othersCost = ((balances['Costo de venta de otros productos'] || {}).debit || 0) - ((balances['Costo de venta de otros productos'] || {}).credit || 0);
+
+  const totalMargin = productRows.reduce((s, r) => s + r.margin, 0);
+
+  return (
+    <Card title="Resultados por centro de costo">
+      <p className="text-sm text-chocolate/75 mb-3">
+        Cada producto es un centro de costo: se compara el valor de venta de referencia de lo producido
+        contra el costo conjunto asignado. Así el consejo ve cuánto deja cada producto por molienda acumulada.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr>
+              <th className={thCls}>Centro (producto)</th>
+              <th className={thCls}>Kilos producidos</th>
+              <th className={thCls}>Costo asignado</th>
+              <th className={thCls}>Valor de referencia</th>
+              <th className={thCls}>Margen</th>
+            </tr>
+          </thead>
+          <tbody>
+            {productRows.map((r) => (
+              <tr key={r.name}>
+                <td className={tdCls}>{r.name}</td>
+                <td className={tdCls}>{fmtKg(r.kilos)}</td>
+                <td className={tdCls}>{fmt(r.cost)}</td>
+                <td className={tdCls}>{fmt(r.value)}</td>
+                <td className={tdCls}>{fmtSigned(r.margin)}</td>
+              </tr>
+            ))}
+            <tr>
+              <td className={tdCls}>Otros productos (costo directo)</td>
+              <td className={tdCls}>-</td>
+              <td className={tdCls}>{fmt(othersCost)}</td>
+              <td className={tdCls}>{fmt(othersRev)}</td>
+              <td className={tdCls}>{fmtSigned(othersRev - othersCost)}</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td className={tdCls}>Margen conjunto de producción</td>
+              <td className={tdCls}></td>
+              <td className={tdCls}></td>
+              <td className={tdCls}></td>
+              <td className={tdCls}>{fmtSigned(totalMargin + othersRev - othersCost)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+function Cierre({ state, persist }) {
+  const periods = [...state.closedMonths];
+  const [period, setPeriod] = useState(periods.length ? periods[periods.length - 1] : '');
+  const effectivePeriod = period || (monthOptions(state).slice(-1)[0] || '');
+  const balances = getBalances(state, period || null);
+
+  const hasRef = state.entries.some((e) => e.source === `cierre-refundicion:${period}`);
+  const hasDist = state.entries.some((e) => e.source === `cierre-distribucion:${period}`);
+  const hasAp = state.entries.some((e) => e.source === `cierre-apertura:${period}`);
+
+  let R = 0;
+  let G = 0;
+  state.accounts.forEach((a) => {
+    const b = balances[a.name] || { debit: 0, credit: 0 };
+    if (a.type === 'ingreso') R += b.credit - b.debit;
+    if (a.type === 'gasto') G += b.debit - b.credit;
+  });
+  const result = R - G;
+
+  function refundicion() {
+    if (hasRef) return;
+    const lines = [];
+    state.accounts.forEach((a) => {
+      const b = balances[a.name] || { debit: 0, credit: 0 };
+      if (a.type === 'ingreso') {
+        const net = b.credit - b.debit;
+        if (net !== 0) lines.push({ account: a.name, debit: net, credit: 0 });
+      }
+      if (a.type === 'gasto') {
+        const net = b.debit - b.credit;
+        if (net !== 0) lines.push({ account: a.name, debit: 0, credit: net });
+      }
+    });
+    const diff = R - G;
+    if (diff > 0) lines.push({ account: 'Resultado del ejercicio', debit: 0, credit: diff });
+    else if (diff < 0) lines.push({ account: 'Resultado del ejercicio', debit: -diff, credit: 0 });
+
+    if (lines.length < 2) {
+      alert('No hay cuentas de resultado con movimiento en el período.');
+      return;
+    }
+
+    const date = period ? lastDayOf(period) : todayISO();
+    if (isClosed(state, periodOf(date)) && period) {
+      // el cierre se fecha al último día del período aunque esté cerrado: es un asiento de cierre
+    }
+
+    persist((s) => {
+      const entry = {
+        id: '',
+        number: null,
+        date,
+        concept: `Refundición de cuentas de resultado ${period || 'ejercicio'}`,
+        lines,
+        status: 'confirmed',
+        source: `cierre-refundicion:${period}`,
+        reversalOf: null,
+        reversedBy: null
+      };
+      assignEntry(s, entry);
+      s.entries.push(entry);
+    });
+  }
+
+  function distribucion() {
+    if (!hasRef || hasDist) return;
+    if (result <= 0) {
+      alert('No hay excedente para distribuir en el período.');
+      return;
+    }
+    const reserve = Math.floor((result * state.settings.reservePercent) / 100);
+    const education = Math.floor((result * state.settings.educationPercent) / 100);
+    const retorno = result - reserve - education;
+    const date = period ? lastDayOf(period) : todayISO();
+
+    persist((s) => {
+      const entry = {
+        id: '',
+        number: null,
+        date,
+        concept: `Distribución del excedente ${period || 'ejercicio'}`,
+        lines: [
+          { account: 'Resultado del ejercicio', debit: result, credit: 0 },
+          { account: 'Reserva legal', debit: 0, credit: reserve },
+          { account: 'Fondo de educación cooperativa', debit: 0, credit: education },
+          { account: 'Retorno a socios por pagar', debit: 0, credit: retorno }
+        ],
+        status: 'confirmed',
+        source: `cierre-distribucion:${period}`,
+        reversalOf: null,
+        reversedBy: null
+      };
+      assignEntry(s, entry);
+      s.entries.push(entry);
+    });
+  }
+
+  function apertura() {
+    if (!hasDist || hasAp) return;
+    const next = nextPeriodOf(effectivePeriod);
+    if (isClosed(state, next)) {
+      alert(`El período ${next} está cerrado; no se puede asentar la apertura.`);
+      return;
+    }
+    const cum = cumulativeBalances(state, effectivePeriod);
+    const lines = [];
+    state.accounts.forEach((a) => {
+      const b = cum[a.name] || { debit: 0, credit: 0 };
+      const net = b.debit - b.credit;
+      if (net === 0) return;
+      if (a.type === 'activo') lines.push(net > 0 ? { account: a.name, debit: net, credit: 0 } : { account: a.name, debit: 0, credit: -net });
+      if (a.type === 'pasivo' || a.type === 'patrimonio') lines.push(net < 0 ? { account: a.name, debit: 0, credit: -net } : { account: a.name, debit: net, credit: 0 });
+    });
+
+    if (lines.length < 2) {
+      alert('No hay saldos patrimoniales para abrir.');
+      return;
+    }
+
+    const date = `${next}-01`;
+    persist((s) => {
+      const entry = {
+        id: '',
+        number: null,
+        date,
+        concept: `Apertura del ejercicio ${next}`,
+        lines,
+        status: 'confirmed',
+        source: `cierre-apertura:${period}`,
+        reversalOf: null,
+        reversedBy: null
+      };
+      assignEntry(s, entry);
+      s.entries.push(entry);
+    });
+  }
+
+  return (
+    <Card title="Cierre del ejercicio">
+      <div className="grid gap-2 md:grid-cols-3 mb-3">
+        <select className={inputCls} value={period} onChange={(e) => setPeriod(e.target.value)}>
+          <option value="">Todo el ejercicio</option>
+          {periods.map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <div className="text-sm self-center">Resultado del período: <span className="font-semibold">{fmtSigned(result)}</span></div>
+        <div className="text-sm self-center text-chocolate/70">Pasos: 1 refundición, 2 distribución, 3 apertura.</div>
+      </div>
+
+      <div className="space-y-3 text-sm">
+        <div className="border border-crema rounded-xl p-3">
+          <div className="font-semibold mb-1">1. Refundición</div>
+          <p className="text-chocolate/75 mb-2">Cierra las cuentas de ingreso y gasto contra «Resultado del ejercicio».</p>
+          <Btn onClick={refundicion} disabled={hasRef}>{hasRef ? 'Refundición asentada' : 'Generar refundición'}</Btn>
+        </div>
+
+        <div className="border border-crema rounded-xl p-3">
+          <div className="font-semibold mb-1">2. Distribución simulada</div>
+          <p className="text-chocolate/75 mb-2">
+            Aplica {state.settings.reservePercent} % a reserva legal, {state.settings.educationPercent} % a fondo de educación
+            y el resto a retorno a socios por pagar.
+          </p>
+          <Btn onClick={distribucion} disabled={!hasRef || hasDist}>{hasDist ? 'Distribución asentada' : 'Generar distribución'}</Btn>
+        </div>
+
+        <div className="border border-crema rounded-xl p-3">
+          <div className="font-semibold mb-1">3. Apertura</div>
+          <p className="text-chocolate/75 mb-2">Asienta los saldos patrimoniales al primer día del período siguiente.</p>
+          <Btn onClick={apertura} disabled={!hasDist || hasAp}>{hasAp ? 'Apertura asentada' : 'Generar apertura'}</Btn>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function Partners({ state, persist }) {
   const rows = partnerTotals(state);
+
+  function approvePartner(partnerId, month) {
+    const date = todayISO();
+    if (isClosed(state, periodOf(date))) {
+      alert('El período actual está cerrado.');
+      return;
+    }
+    if (!confirm(`¿Aprobar las horas extra del socio ${partnerId} de ${month} y pagar el anticipo bloqueado?`)) return;
+
+    persist((s) => {
+      const hh = s.hours.find((x) => x.partnerId === partnerId && x.month === month && x.status === 'blocked');
+      if (!hh) return;
+      hh.status = 'approved';
+
+      const amount =
+        (hh.day + hh.extra) * s.settings.partnerRateCents +
+        Math.round((hh.night * s.settings.partnerRateCents * (100 + s.settings.nightSurchargePercent)) / 100);
+
+      const adv = s.advances.find((a) => a.partnerId === partnerId && a.month === month);
+      if (adv) {
+        adv.amountCents = amount;
+        adv.status = 'paid';
+      } else {
+        s.advances.push({ id: `ADV-${month}-${partnerId}-aprob`, partnerId, month, amountCents: amount, status: 'paid' });
+      }
+
+      const entry = {
+        id: '',
+        number: null,
+        date,
+        concept: `Anticipo aprobado tras aprobación del consejo ${partnerId} ${month}`,
+        lines: [
+          { account: 'Anticipos de retorno a socios', debit: amount, credit: 0 },
+          { account: 'Banco', debit: 0, credit: amount }
+        ],
+        status: 'confirmed',
+        source: 'aprobacion-consejo',
+        reversalOf: null,
+        reversedBy: null
+      };
+      assignEntry(s, entry);
+      s.entries.push(entry);
+    });
+  }
 
   return (
     <div>
       <Card title="Socios y anticipos">
         <p className="text-sm text-chocolate/75 mb-3">
           Anticipo = horas diurnas × valor hora + horas nocturnas × valor hora × {(100 + state.settings.nightSurchargePercent) / 100}.
-          Valor hora actual: {fmt(state.settings.partnerRateCents)}. Si se supera el cupo mensual de horas, el anticipo queda bloqueado.
+          Valor hora actual: {fmt(state.settings.partnerRateCents)}. Si se superan 184 horas mensuales más 24 extra,
+          el anticipo queda bloqueado hasta que el consejo apruebe las horas extra.
         </p>
 
         <div className="overflow-x-auto">
@@ -1034,6 +1407,7 @@ function Partners({ state }) {
                 <th className={thCls}>Horas extra</th>
                 <th className={thCls}>Anticipos cobrados</th>
                 <th className={thCls}>Estado</th>
+                <th className={thCls}>Acción</th>
               </tr>
             </thead>
             <tbody>
@@ -1044,7 +1418,14 @@ function Partners({ state }) {
                   <td className={tdCls}>{r.night}</td>
                   <td className={tdCls}>{r.extra}</td>
                   <td className={tdCls}>{fmt(r.advances)}</td>
-                  <td className={tdCls}>{r.blocked ? 'Con bloqueo por cupo' : 'Al día'}</td>
+                  <td className={tdCls}>{r.blocked ? `Bloqueado (${r.blockedMonth})` : 'Al día'}</td>
+                  <td className={tdCls}>
+                    {r.blocked ? (
+                      <Btn variant="gold" onClick={() => approvePartner(r.partner.id, r.blockedMonth)}>Aprobar horas extra</Btn>
+                    ) : (
+                      <span className="text-chocolate/50">-</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1078,6 +1459,12 @@ function Partners({ state }) {
             </tbody>
           </table>
         </div>
+      </Card>
+
+      <Card title="Proveedor de servicio">
+        <p className="text-sm text-chocolate/80">
+          {state.serviceProvider.name} — {state.serviceProvider.note}
+        </p>
       </Card>
     </div>
   );
@@ -1325,7 +1712,9 @@ function App() {
   else if (route === '/moliendas') view = <Millings state={state} persist={persist} />;
   else if (route === '/mayor') view = <Ledger state={state} />;
   else if (route === '/reportes') view = <Reports state={state} />;
-  else if (route === '/socios') view = <Partners state={state} />;
+  else if (route === '/centros') view = <Centros state={state} />;
+  else if (route === '/cierre') view = <Cierre state={state} persist={persist} />;
+  else if (route === '/socios') view = <Partners state={state} persist={persist} />;
   else if (route === '/distribucion') view = <Distribution state={state} />;
   else if (route === '/admin') view = <Admin state={state} persist={persist} />;
 
