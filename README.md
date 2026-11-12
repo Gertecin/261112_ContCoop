@@ -5,26 +5,16 @@ balance de sumas y saldos, anticipos de retorno y simulador de distribución de 
 
 Todo funciona sin backend: los datos persisten en localStorage del navegador.
 
+
 ## Cómo arrancarlo
 
 Opción 1: abrir desde un servidor local (recomendado)
+Abrir index.html
 
-    python3 -m http.server 8080
+Opción 2: publicado en GitHub Pages
+https://Gertecin.github.io/261112_ContCoop/
 
-Luego visitar:
-
-    http://localhost:8080
-
-Opción 2: publicar en GitHub Pages
-
-    git add .
-    git commit -m "feat: app contable Cooperativa Molino Florida"
-    git push origin main
-
-Después activá GitHub Pages desde la rama main. La URL quedará como:
-
-    https://TU_USUARIO.github.io/261112_ContCoop/
-
+    
 ## Qué está simulado
 
 - No hay backend. Todo se guarda en localStorage.
