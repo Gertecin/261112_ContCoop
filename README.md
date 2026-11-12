@@ -94,3 +94,9 @@ Cuando exista backend, reemplazar:
 - La generación de asientos y moliendas por transacciones del servidor.
 - El control de meses cerrados por permisos y auditoría.
 - La clave local de /admin por autenticación real.
+
+Clave por defecto: molino2026
+Cómo cambiarla: Entrá a la pestaña Admin e iniciá sesión con la clave actual.
+En el bloque "Configuración simulada", buscá el campo Clave /admin. Escribí la nueva clave. Hacé clic en Guardar configuración.
+
+La nueva clave se guarda en el localStorage de ese navegador y será la que se solicite en los próximos ingresos.
