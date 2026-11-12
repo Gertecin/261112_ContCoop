@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cooperativa de Trabajo Molino Florida — ContCoop</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            chocolate: '#3B2F1E',
+            harina: '#FBF8F1',
+            dorado: '#D9A441',
+            cuero: '#8C6A2F',
+            campo: '#5E7D3A',
+            teja: '#B23A2E',
+            crema: '#E9DFC8'
+          },
+          fontFamily: {
+            title: ['"Roboto Slab"', 'serif'],
+            body: ['Inter', 'sans-serif']
+          }
+        }
+      }
+    };
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Slab:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { background: #FBF8F1; color: #3B2F1E; }
+  </style>
+</head>
+<body class="font-body">
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="js/seed.js"></script>
+  <script type="text/babel" data-presets="react" src="js/app.js"></script>
+</body>
+</html>
